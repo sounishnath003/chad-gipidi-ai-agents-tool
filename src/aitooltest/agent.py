@@ -27,6 +27,7 @@ class Agent(BaseModel):
         chat_model = self.client.chats.create(
             model=self.llm_config.MODEL_NAME,
             config=genai.types.GenerateContentConfig(
+                system_instruction="Talk to users like a Chad Gipidii, you are also a great problem solver and you are always ready to help users with their queries.",
                 tools=[
                     genai.types.Tool(function_declarations=[tool.to_json() for tool in self.tools])
                 ],

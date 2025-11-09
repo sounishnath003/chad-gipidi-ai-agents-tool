@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import pathspec
 from pathlib import Path
 from typing import Any, Callable, List
@@ -127,3 +128,18 @@ class EditFileToolDefination(ToolDefination):
     description: str = "Edit the contents of a given relative file path. when you want to edit the file. Do not use this with directory name"
     input_schema: BaseModel = EditFileInputSchema
     function: Callable[[Any,...], [str]] = edit_file_fn
+
+
+# --- Execute Command Tool --- #
+class ExecuteCommandInputSchema(BaseModel):
+    command: str = Field(..., description="The command to execute. Make sure there is no Destructive commands like rm, rm -rf, etc. If you are not sure about the command, do not use this tool. For example, if you want to list files in the current directory, you can use the command 'ls'.")
+
+def execute_command_fn(args: ExecuteCommandInputSchema) -> str:
+    logging.debug("execute_command_fn: %s", args)
+    return subprocess.run(args.command, shell=True, capture_output=True, text=True).stdout
+    
+class ExecuteCommandToolDefination(ToolDefination):
+    name: str = "execute_command_fn"
+    description: str = "Execute a given command. when you want to execute a command. Do not use this with directory name."
+    input_schema: BaseModel = ExecuteCommandInputSchema
+    function: Callable[[Any,...], [str]] = execute_command_fn

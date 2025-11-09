@@ -1,7 +1,7 @@
 import argparse
 import logging
 from google import genai
-from src.aitooltest.tools import EditFileToolDefination, ListFileToolDefination, ReadFileToolDefination
+from src.aitooltest.tools import EditFileToolDefination, ExecuteCommandToolDefination, ListFileToolDefination, ReadFileToolDefination
 from src.aitooltest.logger import initialize_logging
 from src.aitooltest.agent import Agent
 
@@ -31,7 +31,8 @@ def main():
         tools=[
             ReadFileToolDefination(), 
             ListFileToolDefination(), 
-            EditFileToolDefination()
+            EditFileToolDefination(),
+            ExecuteCommandToolDefination(),
         ]
     )
 
