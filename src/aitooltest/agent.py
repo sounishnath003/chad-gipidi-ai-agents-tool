@@ -1,4 +1,3 @@
-from .tools import ReadFileToolDefination
 from pydantic import BaseModel
 from typing import Any, Callable, Dict, List
 from google import genai
@@ -28,7 +27,7 @@ class Agent(BaseModel):
             model=self.llm_config.MODEL_NAME,
             config=genai.types.GenerateContentConfig(
                 tools=[
-                    genai.types.Tool(function_declarations=[ReadFileToolDefination().to_json()])
+                    genai.types.Tool(function_declarations=[tool.to_json() for tool in self.tools])
                 ],
                 automatic_function_calling=genai.types.AutomaticFunctionCallingConfig(disable=True),
                 tool_config=genai.types.ToolConfig(function_calling_config=genai.types.FunctionCallingConfig(mode="AUTO")), # ANY forces:: :-\
