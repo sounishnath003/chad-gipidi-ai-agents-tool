@@ -1,4 +1,5 @@
 import logging
+import os
 import pathspec
 from pathlib import Path
 from typing import Any, Callable, List
@@ -66,3 +67,63 @@ class ListFileToolDefination(ToolDefination):
     description: str = "List files and directories at given path. If no path provided, lists files in the current directory."
     input_schema: BaseModel = ListFileInputSchema
     function: Callable[[Any,...], [str]] = list_files_fn
+
+
+# --- Edit File tool --- #
+class EditFileInputSchema(BaseModel):
+    # Ref: Cline Tool - Claude agents
+    path: str = Field(..., description="The relative path of a file in the working directory")
+    oldStr: str = Field(..., description="Text to search for - must match exactly and must only have one match exactly")
+    newStr: str = Field(..., description="Text to replace the old text with")
+
+
+def edit_file_fn(args: EditFileInputSchema) -> str:
+    """
+    Edit a file by replacing text.
+
+    Behavior mirrors the Go implementation:
+    - Returns error if invalid parameters.
+    - Creates file if missing & oldStr == "".
+    - Raises error if oldStr not found.
+    - Returns "OK" on success.
+    """
+    def create_new_file_fn(path: str, content: str) -> str:
+        """Helper: create new file (including parent dirs)."""
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return "OK"
+
+    logging.debug("edit_file_fn: %s", args)
+
+    # Validate input
+    if not args.path or args.oldStr == args.newStr:
+        raise ValueError("invalid input parameters")
+
+    # Try to read existing file
+    try:
+        with open(args.path, "r", encoding="utf-8") as f:
+            old_content = f.read()
+    except FileNotFoundError:
+        if args.oldStr == "":
+            return create_new_file_fn(args.path, args.newStr)
+        raise FileNotFoundError(f"File not found: {args.path}")
+
+    # Replace occurrences
+    new_content = old_content.replace(args.oldStr, args.newStr)
+
+    # Detect no match
+    if old_content == new_content and args.oldStr != "":
+        raise ValueError("oldStr not found in file")
+
+    # Write updated content
+    with open(args.path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    return "OK"
+
+class EditFileToolDefination(ToolDefination):
+    name: str = "edit_file_fn"
+    description: str = "Edit the contents of a given relative file path. when you want to edit the file. Do not use this with directory name"
+    input_schema: BaseModel = EditFileInputSchema
+    function: Callable[[Any,...], [str]] = edit_file_fn

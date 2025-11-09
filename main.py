@@ -1,7 +1,7 @@
 import argparse
 import logging
 from google import genai
-from src.aitooltest.tools import ListFileToolDefination, ReadFileToolDefination
+from src.aitooltest.tools import EditFileToolDefination, ListFileToolDefination, ReadFileToolDefination
 from src.aitooltest.logger import initialize_logging
 from src.aitooltest.agent import Agent
 
@@ -27,7 +27,13 @@ def main():
     # location=opts.location), get_user_message=get_user_message, tools=[])
 
     # Use: Google Gemini AI - API Key instead
-    agent = Agent(client=genai.Client(), get_user_message=get_user_message, tools=[ReadFileToolDefination(), ListFileToolDefination()])
+    agent = Agent(client=genai.Client(), get_user_message=get_user_message,
+        tools=[
+            ReadFileToolDefination(), 
+            ListFileToolDefination(), 
+            EditFileToolDefination()
+        ]
+    )
 
     # Run the agent
     agent.run()
