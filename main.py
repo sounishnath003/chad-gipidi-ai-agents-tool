@@ -2,6 +2,7 @@ import argparse
 import logging
 from typing import Callable
 from google import genai
+from src.aitooltest.tools import ReadFileToolDefination
 from src.aitooltest.logger import initialize_logging
 from src.aitooltest.agent import Agent
 
@@ -23,10 +24,11 @@ def main():
     logging.debug("opts: %s, unknown_opts: %s", opts, pipeline_opts)
 
     # If you want to use Vertex AI - Chat Inference mode is not available yet....
-    # agent = Agent(client=genai.Client(vertexai=True, project=opts.project_id, location=opts.location), get_user_message=get_user_message, tools=[])
+    # agent = Agent(client=genai.Client(vertexai=True, project=opts.project_id,\
+    # location=opts.location), get_user_message=get_user_message, tools=[])
 
     # Use: Google Gemini AI - API Key instead
-    agent = Agent(client=genai.Client(), get_user_message=get_user_message, tools=[])
+    agent = Agent(client=genai.Client(), get_user_message=get_user_message, tools=[ReadFileToolDefination()])
 
     # Run the agent
     agent.run()
