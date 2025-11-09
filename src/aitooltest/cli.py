@@ -9,7 +9,7 @@ from .agent import Agent
 def run_agent_main_entrypoint():
     """Main entrypoint of the function"""
     initialize_logging()
-    
+
     def get_user_message():
         """tries to take the user's input from command line"""
         input_text = input()
@@ -30,8 +30,8 @@ def run_agent_main_entrypoint():
     # Use: Google Gemini AI - API Key instead
     agent = Agent(client=genai.Client(), get_user_message=get_user_message,
         tools=[
-            ReadFileToolDefination(), 
-            ListFileToolDefination(), 
+            ReadFileToolDefination(),
+            ListFileToolDefination(),
             EditFileToolDefination(),
             ExecuteCommandToolDefination(),
         ]

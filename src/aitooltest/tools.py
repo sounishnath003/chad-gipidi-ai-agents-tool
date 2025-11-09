@@ -136,7 +136,7 @@ class ExecuteCommandInputSchema(BaseModel):
 
 def execute_command_fn(args: ExecuteCommandInputSchema) -> str:
     logging.debug("execute_command_fn: %s", args)
-    return subprocess.run(args.command, shell=True, capture_output=True, text=True).stdout
+    return subprocess.run(args.command, shell=True, cwd=os.getcwd(), capture_output=True, text=True).stdout
     
 class ExecuteCommandToolDefination(ToolDefination):
     name: str = "execute_command_fn"
