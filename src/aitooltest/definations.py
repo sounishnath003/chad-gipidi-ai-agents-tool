@@ -1,15 +1,12 @@
-from typing import Callable, List
+from typing import Callable
 from pydantic import BaseModel
-from google import genai
+from .config import LLMConfig
+
 
 class ToolDefination(BaseModel):
     name: str
     description: str
     input_schema: str
-    funciton: Callable[[RawMessage, [...], [string, Error]]
+    function: Callable[[...], [str]]
 
-
-class Agent(BaseModel):
-    client: genai.Client
-    get_user_message: Callable[[...], [str, bool]]
-    tools: List[ToolDefination]
+    llm_config: LLMConfig = LLMConfig()
