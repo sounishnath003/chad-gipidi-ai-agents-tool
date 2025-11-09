@@ -25,6 +25,8 @@ class Agent(BaseModel):
         yield chat_model
         logging.debug("closing the chat inference endpoint...")
         # Maybe you want to do some operations
+        for msg in chat_model.get_history():
+            logging.debug("Role: %s, Message: %s", msg.role, msg.parts[0].text)
         logging.debug("clearing off the resource contexts...")
 
     def run(self):
@@ -34,9 +36,9 @@ class Agent(BaseModel):
                 while True:
                     print("\u001b[94mYou\u001b[0m: ", end="")
                     user_input = self.get_user_message()
-                    if len(user_input) == 0: break
+                    if len(user_input) == 0 or user_input in set(["q", "quit", "exit"]): break
                     response = chat_mode.send_message(user_input)
-                    logging.info("Gemini: %s", str(response.text))
+                    logging.info("Gemini: %s\n", str(response.text))
         except Exception as e:
             error_message = {
                 "error_code": e.__class__.__name__,

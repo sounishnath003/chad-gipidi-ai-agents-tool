@@ -22,11 +22,15 @@ def main():
     opts, pipeline_opts = parser.parse_known_args()
     logging.debug("opts: %s, unknown_opts: %s", opts, pipeline_opts)
 
+    # If you want to use Vertex AI - Chat Inference mode is not available yet....
     # agent = Agent(client=genai.Client(vertexai=True, project=opts.project_id, location=opts.location), get_user_message=get_user_message, tools=[])
+
+    # Use: Google Gemini AI - API Key instead
     agent = Agent(client=genai.Client(), get_user_message=get_user_message, tools=[])
 
     # Run the agent
     agent.run()
+
 
 if __name__ == "__main__":
     initialize_logging()
