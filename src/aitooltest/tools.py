@@ -12,7 +12,7 @@ class ReadFileInputSchema(BaseModel):
 
 def read_file_fn(args: ReadFileInputSchema) -> str:
     logging.debug("read_file_fn: %s", args)
-    return open(args.path, "r").read().strip() 
+    return open(args.path, "r").read().strip()
 
 class ReadFileToolDefination(ToolDefination):
     name: str = "read_file_fn"

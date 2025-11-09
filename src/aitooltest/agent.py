@@ -7,9 +7,10 @@ from datetime import datetime
 from contextlib import contextmanager
 import logging
 
+
 class Agent(BaseModel):
     client: genai.Client
-    get_user_message: Callable[[...], [str]]
+    get_user_message: Callable[[], str]
     tools: List[ToolDefination]
 
     llm_config: LLMConfig = LLMConfig()
@@ -29,15 +30,15 @@ class Agent(BaseModel):
                 tools=[
                     genai.types.Tool(function_declarations=[tool.to_json() for tool in self.tools])
                 ],
-                automatic_function_calling=genai.types.AutomaticFunctionCallingConfig(disable=True),
-                tool_config=genai.types.ToolConfig(function_calling_config=genai.types.FunctionCallingConfig(mode="AUTO")), # ANY forces:: :-\
+                tool_config=genai.types.ToolConfig(
+                    function_calling_config=genai.types.FunctionCallingConfig(mode="AUTO")
+                )
             )
         )
         yield chat_model
         logging.debug("closing the chat inference endpoint...")
-        # Maybe you want to do some operations
         for msg in chat_model.get_history():
-            logging.debug("Role: %s, Message: %s", msg.role, msg.parts[0].text)
+            logging.debug("Role: %s, Message: %s", msg.role, getattr(msg.parts[0], "text", ""))
         logging.debug("clearing off the resource contexts...")
 
 
@@ -52,25 +53,34 @@ class Agent(BaseModel):
                     if len(user_input) == 0 or user_input in stopping_sequences: break
                     response = chat_mode.send_message(user_input)
 
-                    # Process the responses from LLM AI
+                    # Improved LLM response processing (do not overwrite content for each part)
                     part_responses = response.candidates[0].content.parts
                     logging.debug("part_responses: %s", part_responses)
-
+                    texts: List[str] = []
                     ai_response: str | Any = ""
 
                     for part in part_responses:
-                        if getattr(part, 'text'):
-                            ai_response = part.text
-                        elif getattr(part, 'function_call'):
+                        # Ensure that only non-None strings are appended to texts
+                        text_val = getattr(part, 'text', None)
+                        if text_val is not None:
+                            texts.append(str(text_val))
+                        elif getattr(part, 'function_call', None):
                             # Force logging of each of function calls requested from single call
                             logging.debug("forced function calling")
-                            for fn in response.function_calls:
-                                # Try to Execute the tool func with params
+                            for fn in getattr(response, "function_calls", []):
                                 func_out = self.execute_tool_call(chat_mode, fn.name, input_args=dict(fn.args))
                                 logging.info("Tool: %s", f"Result of func call: {fn.name}({fn.args.items()}) = {func_out}")
-                                response = chat_mode.send_message(f"Result of func call: {fn.name}({fn.args.items()}) = {func_out}")
-                                ai_response = response.text if getattr(response, 'text') else "Thinking on it..."
+                                followup = f"Result of func call: {fn.name}({fn.args.items()}) = {func_out}"
+                                resp = chat_mode.send_message(followup)
+                                # If resp.text exists and is not None, add it; else, add fallback
+                                resp_text = getattr(resp, "text", None)
+                                if resp_text is not None:
+                                    texts.append(str(resp_text))
+                                else:
+                                    texts.append("Thinking on it...")
 
+                    # Only join actual strings in texts (skip None)
+                    ai_response = "\n".join([s for s in texts if isinstance(s, str)]) if texts else "Nothing found..."
                     logging.info("Gemini: %s", str(ai_response))
 
         except Exception as e:
@@ -105,6 +115,21 @@ class Agent(BaseModel):
         attempts = 0
         tool_input = None
 
+        # --- CRITICAL SECURITY FIX: Remove use of eval() on user input ---
+        def parse_input_dict(s: str, old: dict) -> dict:
+            """Safe parsing of input as dictionary from user without using eval."""
+            import ast
+            try:
+                v = ast.literal_eval(s)
+                if isinstance(v, dict):
+                    return v
+                else:
+                    print("Input must be a dictionary. Using old input.")
+                    return old
+            except Exception as ex:
+                print(f"Input parsing error: {ex}. Using old input.")
+                return old
+
         # Try at least 2 times to validate input schema
         while attempts < max_attempts:
             try:
@@ -119,11 +144,8 @@ class Agent(BaseModel):
                 if attempts < max_attempts:
                     print("Please check/fix the tool arguments. Re-enter input arguments as a dictionary (e.g., {'key': 'value'}):")
                     user_input_str = input("> ")
-                    try:
-                        input_args = eval(user_input_str) if user_input_str.strip() else input_args
-                    except Exception as inner_ex:
-                        print(f"Could not parse input. Using old input. Error: {inner_ex}")
-
+                    if user_input_str.strip():
+                        input_args = parse_input_dict(user_input_str, input_args)
         if tool_input is None:
             error_message = f"Failed to validate input for tool '{name}' after {max_attempts} attempts."
             print(error_message)
@@ -145,16 +167,14 @@ class Agent(BaseModel):
                 if attempts < max_attempts:
                     print("You may fix input and try again. Re-enter input arguments as a dictionary or press enter for the previous one:")
                     user_input_str = input("> ")
-                    try:
-                        input_args = eval(user_input_str) if user_input_str.strip() else input_args
+                    if user_input_str.strip():
+                        input_args = parse_input_dict(user_input_str, input_args)
                         try:
                             tool_input = tool.input_schema.model_validate(input_args)
                         except Exception as v_ex:
                             print(f"Input not valid: {v_ex}")
                             chat_mode.send_message(f"Input not valid: {v_ex}")
                             continue
-                    except Exception as inner_ex:
-                        print(f"Could not parse input. Using old input. Error: {inner_ex}")
         else:
             tool_output = None
 
@@ -164,4 +184,4 @@ class Agent(BaseModel):
             chat_mode.send_message(error_message)
             return None
 
-        return {"result": tool_output, "tool_name": name, "input_args": input_args}
+        return {"result": tool_output, "tool_name": name}
