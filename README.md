@@ -1,14 +1,15 @@
-# Building AI Agents - Chad Gipidii 
+# Building AI Agents - Chad Gipidii
 
 Welcome to the AI Tool Test Project! This project features a robust AI agent powered by Google Gemini, designed to interact with users and perform various tasks through a set of integrated tools. It's built for seamless interaction, efficient task execution, and easy extensibility.
 
 ## Features
 
 *   **Interactive AI Agent:** A conversational agent capable of understanding user queries and responding intelligently.
-*   **Dynamic Tool Integration:** The agent can dynamically call and execute a variety of predefined tools to perform actions like file operations and command execution.
+*   **Dynamic Tool Integration with `@tool` Decorator:** Tools are now dynamically registered and discovered using a powerful `@tool` decorator, simplifying their definition and enhancing flexibility.
+*   **Multi-step Tool Execution:** The agent can intelligently execute multiple tool calls in sequence, processing intermediate results to tackle complex problems and achieve sophisticated outcomes.
 *   **Color-Coded Logging:** Enhanced logging system for clear and visually distinct feedback on agent activities.
 *   **Configurable LLM:** Easily switch or configure the underlying Large Language Model (LLM) used by the agent.
-*   **Robust Error Handling:** Tools include input validation and retry mechanisms for resilient operation.
+*   **Robust Error Handling:** Tools include input validation, retry mechanisms, and structured `STDOUT`/`STDERR` for command execution results, ensuring resilient and clear operation.
 
 ## Project Structure Overview
 
@@ -17,10 +18,11 @@ Here's a quick look at the core components of this project:
 *   `main.py`: The main entry point for the application.
 *   `README.md`: You're looking at it, boss!
 *   `src/aitooltest/`: This directory contains the heart of the AI agent's logic.
-    *   `agent.py`: Defines the `Agent` class, which is the central intelligence of the project. It manages interactions with the Google Gemini model, processes user input, and orchestrates tool execution. It's the "brain" that brings everything together.
-    *   `definations.py`: Establishes the `ToolDefination` blueprint, a Pydantic model that standardizes how tools are defined, including their name, description, input schema, and the actual function they execute. This ensures consistency and clarity for all tools.
+    *   `agent.py`: Defines the `Agent` class, which is the central intelligence of the project. It manages interactions with the Google Gemini model, processes user input, and **orchestrates multi-step tool execution by dynamically retrieving registered tools**. It's the "brain" that brings everything together.
+    *   `definations.py`: Establishes the `ToolDefination` blueprint, a Pydantic model that standardizes how tools are defined, including their name, description, and input schema (`Type[BaseModel]`). This ensures consistency and clarity for all tools within the `tool_registry`.
     *   `config.py`: Houses the `LLMConfig` class, where crucial settings for the Large Language Model (e.g., `MODEL_NAME` like "gemini-2.5-flash") are defined. This allows for easy configuration of the AI's core model.
-    *   `tools.py`: This is the powerhouse where all the specific tools are implemented. Each tool (`read_file_fn`, `list_files_fn`, `edit_file_fn`, `execute_command_fn`) comes with its own input schema and description, allowing the AI to perform a wide range of tasks like reading file content, listing directory contents, editing files, and executing shell commands (with safety precautions!).
+    *   `tool_registry.py`: **NEW!** This is the central hub for managing and discovering all tools. It provides the `@tool` decorator to easily register functions as callable tools and offers `get_tools()` to retrieve a list of all registered tools for the agent to use.
+    *   `tools.py`: This is the powerhouse where all the specific tools are implemented. Each function here is transformed into a powerful tool using the `@tool` decorator, allowing the AI to perform a wide range of tasks like `read_file`, `list_files`, `edit_file`, and `execute_command`. Notably, `execute_command` now returns structured `STDOUT` and `STDERR` for clearer output.
     *   `logger.py`: Provides a custom `ColoredFormatter` for the logging system, making log messages more readable and distinguishable by coloring them based on their severity level (e.g., debug, info, warning, error).
     *   `utils.py`: Contains utility functions, primarily `generate_schema` and `python_type_to_json_type`, which are crucial for converting Pydantic models into Google Gemini-compatible JSON schemas. This ensures the AI correctly interprets tool arguments for function calls.
 
@@ -71,5 +73,5 @@ The agent will then prompt you for input. Type your queries and let the Chad Gip
 ## How to Interact
 
 *   **Ask anything!** The agent is ready to help solve your problems.
-*   **Use Tools:** The agent will intelligently decide when to use its available tools (like reading files, listing directories, or executing commands) based on your requests.
+*   **Use Tools:** The agent will intelligently decide when to use its available tools (like reading files, listing directories, or executing commands) based on your requests. With **multi-step execution**, it can chain tool calls to achieve complex tasks!
 *   **Exit:** Type `q`, `quit`, `exit`, or `\bye` to end the chat session.
