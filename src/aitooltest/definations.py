@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import Callable
+from typing import Callable, Type
 from pydantic import BaseModel
 from .config import LLMConfig
 from typing import Any, Callable, Dict
@@ -10,7 +10,7 @@ from .utils import generate_schema
 class ToolDefination(BaseModel):
     name: str
     description: str
-    input_schema: BaseModel
+    input_schema: Type[BaseModel]
     function: Callable[[...], [Any,...]]
 
     llm_config: LLMConfig = LLMConfig()

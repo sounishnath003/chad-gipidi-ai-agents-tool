@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List
 from google import genai
 from .definations import ToolDefination
 from .config import LLMConfig
+from .tool_registry import get_tools
 from datetime import datetime
 from contextlib import contextmanager
 import logging
@@ -11,7 +12,6 @@ import logging
 class Agent(BaseModel):
     client: genai.Client
     get_user_message: Callable[[], str]
-    tools: List[ToolDefination]
 
     llm_config: LLMConfig = LLMConfig()
 
@@ -24,12 +24,13 @@ class Agent(BaseModel):
         """runs the inference mode into a isolated runtime contexts \
         and manages the resource clean ups"""
         logging.debug("initializing chat inference endpoint...")
+        tools = get_tools()
         chat_model = self.client.chats.create(
             model=self.llm_config.MODEL_NAME,
             config=genai.types.GenerateContentConfig(
                 system_instruction="Talk to users like a Chad Gipidii, you are also a great problem solver and you are always ready to help users with their queries.",
                 tools=[
-                    genai.types.Tool(function_declarations=[tool.to_json() for tool in self.tools])
+                    genai.types.Tool(function_declarations=[tool.to_json() for tool in tools])
                 ],
                 tool_config=genai.types.ToolConfig(
                     function_calling_config=genai.types.FunctionCallingConfig(mode="AUTO")
@@ -54,35 +55,22 @@ class Agent(BaseModel):
                     if len(user_input) == 0 or user_input in stopping_sequences: break
                     response = chat_mode.send_message(user_input)
 
-                    # Improved LLM response processing (do not overwrite content for each part)
-                    part_responses = response.candidates[0].content.parts
-                    logging.debug("part_responses: %s", part_responses)
-                    texts: List[str] = []
-                    ai_response: str | Any = ""
+                    # Multi-step tool calling loop
+                    while response.function_calls:
+                        tool_calls = response.function_calls
+                        tool_results = []
+                        for tool_call in tool_calls:
+                            tool_result = self.execute_tool_call(chat_mode, tool_call.name, input_args=dict(tool_call.args))
+                            tool_results.append(tool_result)
+                        
+                        # Send all tool results back to the model in a single message
+                        response = chat_mode.send_message(
+                            ", ".join(str(result) for result in tool_results)
+                        )
 
-                    for part in part_responses:
-                        # Ensure that only non-None strings are appended to texts
-                        text_val = getattr(part, 'text', None)
-                        if text_val is not None:
-                            texts.append(str(text_val))
-                        elif getattr(part, 'function_call', None):
-                            # Force logging of each of function calls requested from single call
-                            logging.debug("forced function calling")
-                            for fn in getattr(response, "function_calls", []):
-                                func_out = self.execute_tool_call(chat_mode, fn.name, input_args=dict(fn.args))
-                                logging.info("Tool: %s", f"Result of func call: {fn.name}({fn.args.items()}) = {func_out}")
-                                followup = f"Result of func call: {fn.name}({fn.args.items()}) = {func_out}"
-                                resp = chat_mode.send_message(followup)
-                                # If resp.text exists and is not None, add it; else, add fallback
-                                resp_text = getattr(resp, "text", None)
-                                if resp_text is not None:
-                                    texts.append(str(resp_text))
-                                else:
-                                    texts.append("Thinking on it...")
-
-                    # Only join actual strings in texts (skip None)
-                    ai_response = "\n".join([s for s in texts if isinstance(s, str)]) if texts else "Nothing found..."
+                    ai_response = getattr(response, "text", "Nothing found...")
                     logging.info("Gemini: %s", str(ai_response))
+                    print(f"\u001b[92mGemini\u001b[0m: {ai_response}")
 
         except Exception as e:
             error_message = {
@@ -99,7 +87,8 @@ class Agent(BaseModel):
         from collections import Counter
 
         logging.debug("\u001b[92mtool\u001b[0m: %s(%s)", name, input_args)
-        tool: ToolDefination | None = next((tool for tool in self.tools if tool.name == name), None)
+        tools = get_tools()
+        tool: ToolDefination | None = next((t for t in tools if t.name == name), None)
         if not tool:
             error_msg = f"Tool {name} not found"
             print(error_msg)
@@ -157,7 +146,7 @@ class Agent(BaseModel):
         attempts = 0
         while attempts < max_attempts:
             try:
-                tool_output = tool.function(tool_input)
+                tool_output = tool.function(**tool_input.model_dump())
                 break
             except Exception as ex:
                 attempts += 1

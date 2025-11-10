@@ -3,34 +3,22 @@ import os
 import subprocess
 import pathspec
 from pathlib import Path
-from typing import Any, Callable, List
-from pydantic import Field, BaseModel
-from .definations import ToolDefination
+from typing import Dict
+from .tool_registry import tool
 
 
-# --- Read File Tool --- #
-class ReadFileInputSchema(BaseModel):
-    path: str = Field(..., description="The relative path of a file in the working directory")
-
-def read_file_fn(args: ReadFileInputSchema) -> str:
-    logging.debug("read_file_fn: %s", args)
-    return open(args.path, "r").read().strip()
-
-class ReadFileToolDefination(ToolDefination):
-    name: str = "read_file_fn"
-    description: str = "Read the contents of a given relative file path. when you want to see what's written in the file. Do not use this with directory name"
-    input_schema: BaseModel = ReadFileInputSchema
-    function: Callable[[Any,...], [str]] = read_file_fn
+@tool
+def read_file(path: str) -> str:
+    """Read the contents of a given relative file path."""
+    logging.debug("read_file: %s", path)
+    with open(path, "r") as f:
+        return f.read().strip()
 
 
-# --- List File tool --- #
-class ListFileInputSchema(BaseModel):
-    path: str = Field(..., description="The relative path of a directory in the working directory")
-
-
-def list_files_fn(args: ListFileInputSchema) -> List[str]:
+@tool
+def list_files(path: str) -> str:
     """List all files in a directory, skipping those ignored by .gitignore and always skipping .git/."""
-    logging.debug("list_files_fn: %s", args)
+    logging.debug("list_files: %s", path)
 
     def load_gitignore_patterns(gitignore_path: Path):
         """Load patterns from a .gitignore file."""
@@ -56,90 +44,71 @@ def list_files_fn(args: ListFileInputSchema) -> List[str]:
                     all_files.append(rel_path)
         return all_files
 
-    base_dir = Path(args.path).resolve()
+    base_dir = Path(path).resolve()
     if not base_dir.exists() or not base_dir.is_dir():
-        raise ValueError(f"Path '{args.path}' is not a valid directory")
+        raise ValueError(f"Path '{path}' is not a valid directory")
 
     result = list_files_skipping_gitignore(base_dir)
     return "\n".join(result) if result else "No files or directories found"
-    
-class ListFileToolDefination(ToolDefination):
-    name: str = "list_files_fn"
-    description: str = "List files and directories at given path. If no path provided, lists files in the current directory."
-    input_schema: BaseModel = ListFileInputSchema
-    function: Callable[[Any,...], [str]] = list_files_fn
 
 
-# --- Edit File tool --- #
-class EditFileInputSchema(BaseModel):
-    # Ref: Cline Tool - Claude agents
-    path: str = Field(..., description="The relative path of a file in the working directory")
-    oldStr: str = Field(..., description="Text to search for - must match exactly and must only have one match exactly")
-    newStr: str = Field(..., description="Text to replace the old text with")
-
-
-def edit_file_fn(args: EditFileInputSchema) -> str:
+@tool
+def edit_file(path: str, old_str: str, new_str: str) -> str:
     """
     Edit a file by replacing text.
-
-    Behavior mirrors the Go implementation:
-    - Returns error if invalid parameters.
-    - Creates file if missing & oldStr == "".
-    - Raises error if oldStr not found.
+    - Creates file if missing & old_str == "".
+    - Raises error if old_str not found.
     - Returns "OK" on success.
     """
-    def create_new_file_fn(path: str, content: str) -> str:
+    def create_new_file(path: str, content: str) -> str:
         """Helper: create new file (including parent dirs)."""
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         return "OK"
 
-    logging.debug("edit_file_fn: %s", args)
+    logging.debug("edit_file: %s", (path, old_str, new_str))
 
     # Validate input
-    if not args.path or args.oldStr == args.newStr:
+    if not path or old_str == new_str:
         raise ValueError("invalid input parameters")
 
     # Try to read existing file
     try:
-        with open(args.path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             old_content = f.read()
     except FileNotFoundError:
-        if args.oldStr == "":
-            return create_new_file_fn(args.path, args.newStr)
-        raise FileNotFoundError(f"File not found: {args.path}")
+        if old_str == "":
+            return create_new_file(path, new_str)
+        raise FileNotFoundError(f"File not found: {path}")
 
     # Replace occurrences
-    new_content = old_content.replace(args.oldStr, args.newStr)
+    new_content = old_content.replace(old_str, new_str)
 
     # Detect no match
-    if old_content == new_content and args.oldStr != "":
-        raise ValueError("oldStr not found in file")
+    if old_content == new_content and old_str != "":
+        raise ValueError("old_str not found in file")
 
     # Write updated content
-    with open(args.path, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(new_content)
 
     return "OK"
 
-class EditFileToolDefination(ToolDefination):
-    name: str = "edit_file_fn"
-    description: str = "Edit the contents of a given relative file path. when you want to edit the file. Do not use this with directory name"
-    input_schema: BaseModel = EditFileInputSchema
-    function: Callable[[Any,...], [str]] = edit_file_fn
 
-
-# --- Execute Command Tool --- #
-class ExecuteCommandInputSchema(BaseModel):
-    command: str = Field(..., description="The command to execute. Make sure there is no Destructive commands like rm, rm -rf, etc. If you are not sure about the command, do not use this tool. For example, if you want to list files in the current directory, you can use the command 'ls'.")
-
-def execute_command_fn(args: ExecuteCommandInputSchema) -> str:
-    logging.debug("execute_command_fn: %s", args)
-    return subprocess.run(args.command, shell=True, cwd=os.getcwd(), capture_output=True, text=True).stdout
+@tool
+def execute_command(command: str) -> Dict[str, str]:
+    """Execute a given command and return its stdout and stderr."""
+    logging.debug("execute_command: %s", command)
+    result = subprocess.run(command, shell=True, cwd=os.getcwd(), capture_output=True, text=True)
+    stdout = result.stdout.strip()
+    stderr = result.stderr.strip()
     
-class ExecuteCommandToolDefination(ToolDefination):
-    name: str = "execute_command_fn"
-    description: str = "Execute a given command. when you want to execute a command. Do not use this with directory name."
-    input_schema: BaseModel = ExecuteCommandInputSchema
-    function: Callable[[Any,...], [str]] = execute_command_fn
+    command_output = {"STDOUT": "", "STDERR": ""}
+
+    if stdout:
+        command_output["STDOUT"] = stdout
+    if stderr:
+        command_output["STDERR"] = stderr
+
+    return command_output
