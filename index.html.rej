@@ -1,0 +1,8 @@
+@@ -75,5 +75,6 @@
+     <footer>
+         <p>&copy; 2023 Manani, Women's Pride. All rights reserved.</p>
+     </footer>
++    <script src="script.js"></script>
+ </body>
+ </html>
+\ No newline at end of line

@@ -55,50 +55,60 @@ def list_files(path: str) -> str:
 
 
 @tool
-def apply_patch(path: str, patch_content: str) -> str:
+def apply_patch(path: str, patch_content: str) -> Dict:
     """
     Apply a patch to a file using the diff format.
-    This is a more robust way to edit files than simple string replacement.
+    Returns a dictionary with the status and details of the operation.
     """
     logging.debug("apply_patch to %s", path)
 
-    # For safety, if the patch is trying to create a new file, let's handle it explicitly.
-    # A simple heuristic: if the file doesn't exist and the patch looks like a new file patch.
-    is_new_file_patch = "--- /dev/null" in patch_content and f"+++ {path}" in patch_content
-    if not os.path.exists(path) and not is_new_file_patch:
-        # The patch command might fail if the file doesn't exist and it's not a creation patch.
-        # To be safe, we can create an empty file first.
+    # Create the file if it doesn't exist, as `patch` can create new files from patches.
+    if not os.path.exists(path):
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w") as f:
-            pass # create empty file
+            pass  # create empty file
 
     try:
-        # The `patch` command is a standard Unix utility.
-        # We pipe the patch content to its stdin.
         result = subprocess.run(
             ['patch', path],
             input=patch_content,
             text=True,
             capture_output=True,
-            check=False  # We'll check the return code manually
+            check=False
         )
 
         if result.returncode == 0:
             logging.info("Patch applied successfully to %s", path)
-            return "OK"
+            return {"status": "OK"}
         else:
-            error_message = f"Failed to apply patch to {path}.\nReturn Code: {result.returncode}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-            logging.error(error_message)
-            raise ValueError(error_message)
+            logging.warning("Failed to apply patch to %s. Return code: %s", path, result.returncode)
+            
+            # Check for a reject file (.rej)
+            rej_path = Path(path + ".rej")
+            rej_content = None
+            if rej_path.exists():
+                try:
+                    with open(rej_path, "r") as f:
+                        rej_content = f.read()
+                    os.remove(rej_path)  # Clean up the reject file
+                except Exception as e:
+                    logging.error("Error reading or deleting reject file %s: %s", rej_path, e)
+
+            return {
+                "status": "FAIL",
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "rejects": rej_content
+            }
 
     except FileNotFoundError:
-        # This happens if the 'patch' command is not installed.
         error_message = "The 'patch' command is not available on this system. Please install it."
         logging.error(error_message)
-        raise RuntimeError(error_message)
+        return {"status": "ERROR", "message": error_message}
     except Exception as e:
         logging.error("An unexpected error occurred during apply_patch: %s", e)
-        raise
+        return {"status": "ERROR", "message": str(e)}
 
 
 # A dictionary to store running processes information
@@ -144,13 +154,13 @@ def _run_command_in_thread(command: str, command_id: str):
 
 
 @tool
-def execute_command(command: str, wait: bool = False) -> Dict:
+def execute_command(command: str, description: Optional[str] = None, wait: bool = False) -> Dict:
     """
     Execute a given command.
     By default, it runs in the background and returns a command_id.
     Set `wait=True` to run it in the foreground and wait for completion.
     """
-    logging.debug("execute_command: %s, wait=%s", command, wait)
+    logging.debug("execute_command: %s, description=%s, wait=%s", command, description, wait)
 
     if wait:
         result = subprocess.run(command, shell=True, cwd=os.getcwd(), capture_output=True, text=True)
@@ -163,6 +173,7 @@ def execute_command(command: str, wait: bool = False) -> Dict:
     
     running_commands[command_id] = {
         'command': command,
+        'description': description,
         'status': 'running',
         'stdout': '',
         'stderr': '',
@@ -187,11 +198,29 @@ def check_command(command_id: str) -> Dict:
     
     info = running_commands[command_id]
     return {
+        "command": info['command'],
+        "description": info['description'],
         "status": info['status'],
         "stdout": info['stdout'],
         "stderr": info['stderr'],
         "returncode": info['returncode'],
     }
+
+
+@tool
+def list_running_commands() -> Dict[str, Dict]:
+    """List all currently running commands."""
+    logging.debug("list_running_commands")
+    
+    serializable_commands = {}
+    for cmd_id, info in running_commands.items():
+        if info['status'] == 'running':
+             serializable_commands[cmd_id] = {
+                'command': info['command'],
+                'description': info['description'],
+                'status': info['status'],
+            }
+    return serializable_commands
 
 
 @tool
