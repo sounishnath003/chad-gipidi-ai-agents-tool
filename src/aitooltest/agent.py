@@ -4,6 +4,7 @@ from google import genai
 from .definations import ToolDefination
 from .config import LLMConfig
 from .tool_registry import get_tools
+from .token_usage import TokenUsage
 from datetime import datetime
 from contextlib import contextmanager
 import logging
@@ -12,6 +13,7 @@ import logging
 class Agent(BaseModel):
     client: genai.Client
     get_user_message: Callable[[], str]
+    token_usage: TokenUsage = TokenUsage()
 
     llm_config: LLMConfig = LLMConfig()
 
@@ -37,16 +39,19 @@ class Agent(BaseModel):
                 )
             )
         )
-        yield chat_model
-        logging.debug("closing the chat inference endpoint...")
-        for msg in chat_model.get_history():
-            logging.debug("Role: %s, Message: %s", msg.role, getattr(msg.parts[0], "text", ""))
-        logging.debug("clearing off the resource contexts...")
+        try:
+            yield chat_model
+        finally:
+            logging.debug("closing the chat inference endpoint...")
+            for msg in chat_model.get_history():
+                logging.debug("Role: %s, Message: %s", msg.role, getattr(msg.parts[0], "text", ""))
+            logging.debug("clearing off the resource contexts...")
 
 
     def run(self):
         stopping_sequences = set(["q", "quit", "exit", "\\bye"])
         logging.info("Chat with Google Gemini (use '(ctrl-c)' to quit)")
+        self.token_usage.start()
         try:
             with self.run_as_chat_inference() as chat_mode:
                 while True:
@@ -54,6 +59,7 @@ class Agent(BaseModel):
                     user_input = self.get_user_message()
                     if len(user_input) == 0 or user_input in stopping_sequences: break
                     response = chat_mode.send_message(user_input)
+                    self.token_usage.update_usage(response.usage_metadata.total_token_count)
 
                     # Multi-step tool calling loop
                     while response.function_calls:
@@ -67,6 +73,7 @@ class Agent(BaseModel):
                         response = chat_mode.send_message(
                             ", ".join(str(result) for result in tool_results)
                         )
+                        self.token_usage.update_usage(response.usage_metadata.total_token_count)
 
                     ai_response = getattr(response, "text", "Nothing found...")
                     logging.info("Gemini: %s", str(ai_response))
@@ -80,6 +87,8 @@ class Agent(BaseModel):
             }
             logging.error("an error occured: %s", error_message, exc_info=e)
             raise e
+        finally:
+            self.token_usage.stop()
 
 
     def execute_tool_call(self, chat_mode: genai.chats.Chat, name: str, input_args: Dict[str, Any]) -> Any:
